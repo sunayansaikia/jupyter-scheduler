@@ -63,6 +63,7 @@ class ExecutionManager(ABC):
         except Exception as e:
             self.on_failure(e)
         else:
+            print("### Updating complete status")
             self.on_complete()
 
     @abstractmethod
@@ -124,7 +125,8 @@ class DefaultExecutionManager(ExecutionManager):
 
     def execute(self):
         job = self.model
-
+        
+        print(f"#### stg path: {self.staging_paths}")
         with open(self.staging_paths["input"], encoding="utf-8") as f:
             nb = nbformat.read(f, as_version=4)
 
@@ -132,6 +134,7 @@ class DefaultExecutionManager(ExecutionManager):
             nb = add_parameters(nb, job.parameters)
 
         staging_dir = os.path.dirname(self.staging_paths["input"])
+        print(f"#### stg dir: {staging_dir}")
         ep = ExecutePreprocessor(
             kernel_name=nb.metadata.kernelspec["name"], store_widget_state=True, cwd=staging_dir
         )

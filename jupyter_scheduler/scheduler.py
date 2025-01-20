@@ -78,7 +78,9 @@ class BaseScheduler(LoggingConfigurable):
 
     @default("staging_path")
     def _default_staging_path(self):
-        return os.path.join(jupyter_data_dir(), "scheduler_staging_area")
+        #return os.path.join(jupyter_data_dir(), "scheduler_staging_area")
+        return os.path.join('/home/melomane/code/minio/mnt2/', "scheduler_staging_area")
+        
 
     execution_manager_class = TType(
         allow_none=True,
@@ -373,6 +375,7 @@ class BaseScheduler(LoggingConfigurable):
         where all the job files will be downloaded
         from the staging location.
         """
+        print(f"## root dir: {self.root_dir}")
         output_dir_name = create_output_directory(model.input_filename, model.job_id)
         if root_dir_relative:
             return os.path.relpath(
@@ -432,12 +435,14 @@ class Scheduler(BaseScheduler):
         """Copies the input file along with the input directory to the staging directory, returns the list of copied files relative to the staging directory"""
         input_dir_path = os.path.dirname(os.path.join(self.root_dir, input_uri))
         staging_dir = os.path.dirname(nb_copy_to_path)
+        print(f"input dir: {input_dir_path}, stg dir: {staging_dir}")
         return copy_directory(
             source_dir=input_dir_path,
             destination_dir=staging_dir,
         )
 
     def create_job(self, model: CreateJob) -> str:
+        print("### In Create_job...")
         if not model.job_definition_id and not self.file_exists(model.input_uri):
             raise InputUriError(model.input_uri)
 
@@ -468,6 +473,7 @@ class Scheduler(BaseScheduler):
             session.commit()
 
             staging_paths = self.get_staging_paths(DescribeJob.from_orm(job))
+            print(f"### [create job] stg paths - Gen Scheduler: {staging_paths}")
             if model.package_input_folder:
                 copied_files = self.copy_input_folder(model.input_uri, staging_paths["input"])
                 input_notebook_filename = os.path.basename(model.input_uri)
@@ -576,6 +582,7 @@ class Scheduler(BaseScheduler):
                 self.stop_job(job_id)
 
             staging_paths = self.get_staging_paths(DescribeJob.from_orm(job_record))
+            print(f"### [Del] stg paths - Gen Scheduler: {staging_paths}")
             if staging_paths:
                 path = os.path.dirname(next(iter(staging_paths.values())))
                 if os.path.exists(path):
@@ -618,6 +625,7 @@ class Scheduler(BaseScheduler):
             job_definition_schedule = job_definition.schedule
 
             staging_paths = self.get_staging_paths(DescribeJobDefinition.from_orm(job_definition))
+            print(f"### [Create job Def] stg paths - Gen Scheduler: {staging_paths}")
             if model.package_input_folder:
                 copied_files = self.copy_input_folder(model.input_uri, staging_paths["input"])
                 input_notebook_filename = os.path.basename(model.input_uri)
@@ -762,6 +770,7 @@ class Scheduler(BaseScheduler):
 
     def get_staging_paths(self, model: Union[DescribeJob, DescribeJobDefinition]) -> Dict[str, str]:
         staging_paths = {}
+        print(f"## model: {model}")
         if not model:
             return staging_paths
 
@@ -790,10 +799,11 @@ class ArchivingScheduler(Scheduler):
     def get_staging_paths(self, model: Union[DescribeJob, DescribeJobDefinition]) -> Dict[str, str]:
         staging_paths = {}
         if not model:
+            print("### not model")
             return staging_paths
 
+        print(f"## ID: {id}, model: {model}")
         id = model.job_id if isinstance(model, DescribeJob) else model.job_definition_id
-
         for output_format in model.output_formats:
             filename = create_output_filename(
                 model.input_filename, model.create_time, output_format

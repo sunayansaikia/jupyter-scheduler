@@ -294,6 +294,7 @@ class TaskRunner(BaseTaskRunner):
 
     def process_queue(self):
         self.log.debug(self.queue)
+        print("### Processing queue")
         while not self.queue.isempty():
             task = self.queue.peek()
             cache = self.cache.get(task.job_definition_id)
@@ -316,6 +317,7 @@ class TaskRunner(BaseTaskRunner):
                 break
             else:
                 try:
+                    print("### Running job")
                     self.create_job(task.job_definition_id)
                 except Exception as e:
                     self.log.exception(e)
