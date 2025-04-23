@@ -626,7 +626,7 @@ class Scheduler(BaseScheduler):
             job_definition_schedule = job_definition.schedule
 
             staging_paths = self.get_staging_paths(DescribeJobDefinition.from_orm(job_definition))
-            print(f"### [Create job Def] stg paths - Gen Scheduler: {staging_paths}")
+            # TODO: print(f"### [Create job Def] stg paths - Gen Scheduler: {staging_paths}")
             if model.package_input_folder:
                 copied_files = self.copy_input_folder(model.input_uri, staging_paths["input"])
                 input_notebook_filename = os.path.basename(model.input_uri)
@@ -800,7 +800,7 @@ class ArchivingScheduler(Scheduler):
     def get_staging_paths(self, model: Union[DescribeJob, DescribeJobDefinition]) -> Dict[str, str]:
         staging_paths = {}
         if not model:
-            print("### not model")
+            # TODO: print("### not model")
             return staging_paths
 
         print(f"## ID: {id}, model: {model}")
