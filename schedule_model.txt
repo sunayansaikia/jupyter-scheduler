@@ -1,0 +1,13 @@
+input_uri='my-project/test.ipynb'
+input_filename='test.ipynb' 
+runtime_environment_name='miniconda3'
+runtime_environment_parameters=None
+output_formats=['ipynb', 'html']
+parameters=None 
+tags=None 
+name='test.ipynb' 
+output_filename_template='{{input_filename}}-{{create_time}}' 
+compute_type=None
+schedule='* * * * *'
+timezone='Asia/Calcutta'
+package_input_folder=True
