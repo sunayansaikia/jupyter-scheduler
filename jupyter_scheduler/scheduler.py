@@ -454,24 +454,24 @@ class Scheduler(BaseScheduler):
                     the notebook, select a kernel, and re-submit the job to execute.
                     """
             )
-
-        with self.db_session() as session:
-            if model.idempotency_token:
-                job = (
-                    session.query(Job)
-                    .filter(Job.idempotency_token == model.idempotency_token)
-                    .first()
-                )
-                if job:
-                    raise IdempotencyTokenError(model.idempotency_token)
+        if True:
+        #with self.db_session() as session:
+            # if model.idempotency_token:
+            #     job = (
+            #         session.query(Job)
+            #         .filter(Job.idempotency_token == model.idempotency_token)
+            #         .first()
+            #     )
+            #     if job:
+            #         raise IdempotencyTokenError(model.idempotency_token)
 
             if not model.output_formats:
                 model.output_formats = []
 
             job = Job(**model.dict(exclude_none=True, exclude={"input_uri"}))
 
-            session.add(job)
-            session.commit()
+            #session.add(job)
+            #session.commit()
 
             staging_paths = self.get_staging_paths(DescribeJob.from_orm(job))
             #TODO: print(f"### [create job] stg paths - Gen Scheduler: {staging_paths}")
@@ -481,7 +481,7 @@ class Scheduler(BaseScheduler):
                 job.packaged_files = [
                     file for file in copied_files if file != input_notebook_filename
                 ]
-                session.commit()
+                #session.commit()
             else:
                 self.copy_input_file(model.input_uri, staging_paths["input"])
 
@@ -504,7 +504,7 @@ class Scheduler(BaseScheduler):
             p.start()
 
             job.pid = p.pid
-            session.commit()
+            #session.commit()
 
             job_id = job.job_id
 
@@ -516,46 +516,89 @@ class Scheduler(BaseScheduler):
             session.commit()
 
     def list_jobs(self, query: ListJobsQuery) -> ListJobsResponse:
-        with self.db_session() as session:
-            jobs = session.query(Job)
-
-            if query.status:
-                jobs = jobs.filter(Job.status == query.status)
-            if query.job_definition_id:
-                jobs = jobs.filter(Job.job_definition_id == query.job_definition_id)
-            if query.start_time:
-                jobs = jobs.filter(Job.start_time >= query.start_time)
-            if query.name:
-                jobs = jobs.filter(Job.name.like(f"{query.name}%"))
-            if query.tags:
-                jobs = jobs.filter(and_(Job.tags.contains(tag) for tag in query.tags))
-
-            total = jobs.count()
-
-            if query.sort_by:
-                for sort_field in query.sort_by:
-                    direction = desc if sort_field.direction == SortDirection.desc else asc
-                    jobs = jobs.order_by(direction(getattr(Job, sort_field.name)))
-            next_token = int(query.next_token) if query.next_token else 0
-            jobs = jobs.limit(query.max_items).offset(next_token)
-
-            jobs = jobs.all()
-
-        next_token = next_token + len(jobs)
-        if next_token >= total:
-            next_token = None
-
+        from kubernetes import client, config
+        # Load kubeconfig and initialize client
+        config.load_kube_config()
+        batch_v1 = client.BatchV1Api()
+        # List jobs in the specified namespace
+        jobs = batch_v1.list_namespaced_job(namespace='default')
         jobs_list = []
-        for job in jobs:
-            model = DescribeJob.from_orm(job)
-            self.add_job_files(model=model)
+        for job in jobs.items:
+            model = DescribeJob(
+                input_filename=f"{job.metadata.name}",
+                runtime_environment_name="python3.8",
+                runtime_environment_parameters=None,
+                output_formats=["json"],
+                idempotency_token="token123",
+                job_definition_id="def123",
+                parameters={"param1": "value1"},
+                tags=None,
+                name=f"{job.metadata.name}",
+                output_filename_template=f"output.txt",
+                compute_type="CPU",
+                job_id=f"{job.metadata.name}",
+                job_files=[],
+                url="http://example.com/job123",
+                create_time=1617181723,
+                update_time=1617182734,
+                start_time=1617181800,
+                end_time=1617182700,
+                status=Status.CREATED,
+                status_message="Job created successfully.",
+                downloaded=False,
+                package_input_folder=False,
+                packaged_files=[]
+            )
+            #model = DescribeJob.from_orm(job)
+            #self.add_job_files(model=model)
             jobs_list.append(model)
 
         list_jobs_response = ListJobsResponse(
             jobs=jobs_list,
-            next_token=next_token,
-            total_count=total,
+            next_token=None,
+            total_count=1,
         )
+
+        # with self.db_session() as session:
+        #     jobs = session.query(Job)
+
+        #     if query.status:
+        #         jobs = jobs.filter(Job.status == query.status)
+        #     if query.job_definition_id:
+        #         jobs = jobs.filter(Job.job_definition_id == query.job_definition_id)
+        #     if query.start_time:
+        #         jobs = jobs.filter(Job.start_time >= query.start_time)
+        #     if query.name:
+        #         jobs = jobs.filter(Job.name.like(f"{query.name}%"))
+        #     if query.tags:
+        #         jobs = jobs.filter(and_(Job.tags.contains(tag) for tag in query.tags))
+
+        #     total = jobs.count()
+
+        #     if query.sort_by:
+        #         for sort_field in query.sort_by:
+        #             direction = desc if sort_field.direction == SortDirection.desc else asc
+        #             jobs = jobs.order_by(direction(getattr(Job, sort_field.name)))
+        #     next_token = int(query.next_token) if query.next_token else 0
+        #     jobs = jobs.limit(query.max_items).offset(next_token)
+
+        #     jobs = jobs.all()
+
+        # next_token = next_token + len(jobs)
+        # if next_token >= total:
+        #     next_token = None
+
+        # jobs_list = []
+        # for job in jobs:
+        #     model = DescribeJob.from_orm(job)
+        #     self.add_job_files(model=model)
+        #     jobs_list.append(model)
+
+        # list_jobs_response = ListJobsResponse(
+        #     jobs=jobs_list,
+        #     next_token=None,
+        #     total_count=0,
+        # )
 
         return list_jobs_response
 
@@ -567,15 +610,56 @@ class Scheduler(BaseScheduler):
             return count if count else 0
 
     def get_job(self, job_id: str, job_files: Optional[bool] = True) -> DescribeJob:
-        with self.db_session() as session:
-            job_record = session.query(Job).filter(Job.job_id == job_id).one()
+        # with self.db_session() as session:
+        #     job_record = session.query(Job).filter(Job.job_id == job_id).one()
 
-        model = DescribeJob.from_orm(job_record)
-        if job_files:
-            self.add_job_files(model=model)
-
-        return model
-
+        # model = DescribeJob.from_orm(job_record)
+        # if job_files:
+        #     self.add_job_files(model=model)
+        from kubernetes import client, config
+        from kubernetes.client.rest import ApiException
+        namespace = "default"     # Replace with your namespace if different
+        # Load kubeconfig and initialize the client
+        config.load_kube_config()
+        batch_v1 = client.BatchV1Api()
+        try:
+            # Retrieve the specified Job
+            job = batch_v1.read_namespaced_job(name=job_id, namespace=namespace)
+            print(f"Job '{job.metadata.name}' found in namespace '{namespace}'.")
+            print(f"Status: {job.status}")
+            model = DescribeJob(
+                input_filename=f"{job.metadata.name}",
+                runtime_environment_name="python3.8",
+                runtime_environment_parameters=None,
+                output_formats=["json"],
+                idempotency_token="token123",
+                job_definition_id="def123",
+                parameters={"param1": "value1"},
+                tags=None,
+                name=f"{job.metadata.name}",
+                output_filename_template=f"output.txt",
+                compute_type="CPU",
+                job_id=f"{job.metadata.name}",
+                job_files=[],
+                url="http://example.com/job123",
+                create_time=1617181723,
+                update_time=1617182734,
+                start_time=1617181800,
+                end_time=1617182700,
+                status=Status.CREATED,
+                status_message="Job created successfully.",
+                downloaded=False,
+                package_input_folder=False,
+                packaged_files=[]
+            )
+            return model
+        except ApiException as e:
+            if e.status == 404:
+                print(f"Job '{job_id}' not found in namespace '{namespace}'.")
+            else:
+                print(f"Exception when retrieving job: {e}")
+            return None
+    
     def delete_job(self, job_id: str):
         with self.db_session() as session:
             job_record = session.query(Job).filter(Job.job_id == job_id).one()
@@ -613,34 +697,77 @@ class Scheduler(BaseScheduler):
                         break
 
     def create_job_definition(self, model: CreateJobDefinition) -> str:
-        with self.db_session() as session:
-            if not self.file_exists(model.input_uri):
-                raise InputUriError(model.input_uri)
+        # with self.db_session() as session:
+        #     if not self.file_exists(model.input_uri):
+        #         raise InputUriError(model.input_uri)
 
-            job_definition = JobDefinition(**model.dict(exclude_none=True, exclude={"input_uri"}))
-            session.add(job_definition)
-            session.commit()
+        #     job_definition = JobDefinition(**model.dict(exclude_none=True, exclude={"input_uri"}))
+        #     session.add(job_definition)
+        #     session.commit()
 
-            # copy values for use after session is closed to avoid DetachedInstanceError
-            job_definition_id = job_definition.job_definition_id
-            job_definition_schedule = job_definition.schedule
+        #     # copy values for use after session is closed to avoid DetachedInstanceError
+        #     job_definition_id = job_definition.job_definition_id
+        #     job_definition_schedule = job_definition.schedule
 
-            staging_paths = self.get_staging_paths(DescribeJobDefinition.from_orm(job_definition))
-            # TODO: print(f"### [Create job Def] stg paths - Gen Scheduler: {staging_paths}")
-            if model.package_input_folder:
-                copied_files = self.copy_input_folder(model.input_uri, staging_paths["input"])
-                input_notebook_filename = os.path.basename(model.input_uri)
-                job_definition.packaged_files = [
-                    file for file in copied_files if file != input_notebook_filename
-                ]
-                session.commit()
-            else:
-                self.copy_input_file(model.input_uri, staging_paths["input"])
+        #     staging_paths = self.get_staging_paths(DescribeJobDefinition.from_orm(job_definition))
+        #     # TODO: print(f"### [Create job Def] stg paths - Gen Scheduler: {staging_paths}")
+        #     if model.package_input_folder:
+        #         copied_files = self.copy_input_folder(model.input_uri, staging_paths["input"])
+        #         input_notebook_filename = os.path.basename(model.input_uri)
+        #         job_definition.packaged_files = [
+        #             file for file in copied_files if file != input_notebook_filename
+        #         ]
+        #         session.commit()
+        #     else:
+        #         self.copy_input_file(model.input_uri, staging_paths["input"])
 
-        if self.task_runner and job_definition_schedule:
-            self.task_runner.add_job_definition(job_definition_id)
+        # if self.task_runner and job_definition_schedule:
+        #     self.task_runner.add_job_definition(job_definition_id)
+        # Load kubeconfig and initialize client
+        from kubernetes import client, config
+        config.load_kube_config()
+        batch_v1 = client.BatchV1Api()
+    
+        # Create the cron job
+        # Define the container
+        container = client.V1Container(
+            name="busybox",
+            image="busybox",
+            command=["/bin/sh", "-c", "date; echo Hello from the Kubernetes cluster"]
+        )
 
-        return job_definition_id
+        # Define the pod template
+        template = client.V1PodTemplateSpec(
+            metadata=client.V1ObjectMeta(labels={"app": "busybox-cronjob"}),
+            spec=client.V1PodSpec(
+                restart_policy="OnFailure",
+                containers=[container]
+            )
+        )
+    
+        # Define the job template
+        job_spec = client.V1JobSpec(template=template)
+        job_template = client.V1JobTemplateSpec(spec=job_spec)
+    
+        # Define the cron job spec
+        cron_job_spec = client.V1CronJobSpec(
+            schedule="*/1 * * * *",
+            job_template=job_template
+        )
+
+        # Define the cron job
+        cron_job = client.V1CronJob(
+            api_version="batch/v1",
+            kind="CronJob",
+            metadata=client.V1ObjectMeta(name="busybox-cronjob"),
+            spec=cron_job_spec
+        )
+        batch_v1.create_namespaced_cron_job(
+            body=cron_job,
+            namespace="default"
+        )
+        print("CronJob created successfully.")
+        return "busybox-cronjob"
 
     def update_job_definition(self, job_definition_id: str, model: UpdateJobDefinition):
         with self.db_session() as session:
@@ -709,51 +836,115 @@ class Scheduler(BaseScheduler):
             self.task_runner.delete_job_definition(job_definition_id)
 
     def get_job_definition(self, job_definition_id: str) -> DescribeJobDefinition:
-        with self.db_session() as session:
-            job_definition = (
-                session.query(JobDefinition)
-                .filter(JobDefinition.job_definition_id == job_definition_id)
-                .one()
+        # with self.db_session() as session:
+        #     job_definition = (
+        #         session.query(JobDefinition)
+        #         .filter(JobDefinition.job_definition_id == job_definition_id)
+        #         .one()
+        #     )
+        from kubernetes import client, config
+        from kubernetes.client.rest import ApiException
+        config.load_kube_config()
+        batch_v1 = client.BatchV1Api()
+        try:
+            # Retrieve the specified CronJob
+            namespace = 'default'
+            cronjob = batch_v1.read_namespaced_cron_job(name=job_definition_id, namespace=namespace)
+            print(f"CronJob '{cronjob.metadata.name}' found in namespace '{namespace}'.")
+            job_def = DescribeJobDefinition(
+                input_filename="test.ipynb",
+                runtime_environment_name="python3.9",
+                runtime_environment_parameters=None,
+                output_formats=["json"],
+                parameters={"param1": "value1"},
+                tags=None,
+                name=f"{cronjob.metadata.name}",
+                output_filename_template="output_1.txt",
+                compute_type="CPU",
+                schedule=f"{cronjob.spec.schedule}",
+                timezone="UTC",
+                job_definition_id=f"{cronjob.metadata.name}",
+                create_time=1617181723,
+                update_time=1617182734,
+                active=True,
+                package_input_folder=False,
+                packaged_files=[]
             )
+            return job_def
+        except ApiException as e:
+            if e.status == 404:
+                print(f"CronJob '{job_definition_id}' not found in namespace '{namespace}'.")
+            else:
+                print(f"Exception when retrieving CronJob: {e}")
+            return None
 
         return DescribeJobDefinition.from_orm(job_definition)
 
     def list_job_definitions(self, query: ListJobDefinitionsQuery) -> ListJobDefinitionsResponse:
-        with self.db_session() as session:
-            definitions = session.query(JobDefinition)
+        # with self.db_session() as session:
+        #     definitions = session.query(JobDefinition)
 
-            if query.create_time:
-                definitions = definitions.filter(JobDefinition.create_time >= query.create_time)
-            if query.name:
-                definitions = definitions.filter(JobDefinition.name.like(f"{query.name}%"))
-            if query.tags:
-                definitions = definitions.filter(
-                    and_(JobDefinition.tags.contains(tag) for tag in query.tags)
-                )
+        #     if query.create_time:
+        #         definitions = definitions.filter(JobDefinition.create_time >= query.create_time)
+        #     if query.name:
+        #         definitions = definitions.filter(JobDefinition.name.like(f"{query.name}%"))
+        #     if query.tags:
+        #         definitions = definitions.filter(
+        #             and_(JobDefinition.tags.contains(tag) for tag in query.tags)
+        #         )
 
-            total = definitions.count()
+        #     total = definitions.count()
 
-            if query.sort_by:
-                for sort_field in query.sort_by:
-                    direction = desc if sort_field.direction == SortDirection.desc else asc
-                    definitions = definitions.order_by(
-                        direction(getattr(JobDefinition, sort_field.name))
-                    )
-            next_token = int(query.next_token) if query.next_token else 0
-            definitions = definitions.limit(query.max_items).offset(next_token)
+        #     if query.sort_by:
+        #         for sort_field in query.sort_by:
+        #             direction = desc if sort_field.direction == SortDirection.desc else asc
+        #             definitions = definitions.order_by(
+        #                 direction(getattr(JobDefinition, sort_field.name))
+        #             )
+        #     next_token = int(query.next_token) if query.next_token else 0
+        #     definitions = definitions.limit(query.max_items).offset(next_token)
 
-            definitions = definitions.all()
+        #     definitions = definitions.all()
 
-        next_token = next_token + len(definitions)
-        if next_token >= total:
-            next_token = None
+        # next_token = next_token + len(definitions)
+        # if next_token >= total:
+        #     next_token = None
+        from kubernetes import client, config
+        # Load kubeconfig and initialize the client
+        config.load_kube_config()
+        batch_v1 = client.BatchV1Api()
+    
+        # List CronJobs in the specified namespace
+        namespace = 'default'
+        cronjobs = batch_v1.list_namespaced_cron_job(namespace=namespace)
+        print(f"CronJobs in namespace '{namespace}':")
+        job_definitions_list = []
+        for cj in cronjobs.items:
+            job_def = DescribeJobDefinition(
+                input_filename="test.ipynb",
+                runtime_environment_name="python3.9",
+                runtime_environment_parameters=None,
+                output_formats=["json"],
+                parameters={"param1": "value1"},
+                tags=None,
+                name=f"{cj.metadata.name}",
+                output_filename_template="output_1.txt",
+                compute_type="CPU",
+                schedule=f"{cj.spec.schedule}",
+                timezone="UTC",
+                job_definition_id=f"{cj.metadata.name}",
+                create_time=1617181723,
+                update_time=1617182734,
+                active=True,
+                package_input_folder=False,
+                packaged_files=[]
+            )
+            job_definitions_list.append(job_def)
 
         list_response = ListJobDefinitionsResponse(
-            job_definitions=[
-                DescribeJobDefinition.from_orm(definition) for definition in definitions or []
-            ],
-            next_token=next_token,
-            total_count=total,
+            job_definitions=job_definitions_list,
+            next_token=None,
+            total_count=1,
         )
 
         return list_response

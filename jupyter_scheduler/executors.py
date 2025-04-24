@@ -148,6 +148,38 @@ class DefaultExecutionManager(ExecutionManager):
         # finally:
         #     self.add_side_effects_files(staging_dir)
         #     self.create_output_files(job, nb)
+        from kubernetes import client, config
+        
+        # Load kubeconfig and initialize client
+        config.load_kube_config()
+        
+        batch_v1 = client.BatchV1Api()
+        
+        # Define container
+        container = client.V1Container(
+            name="busybox",
+            image="busybox",
+            command=["/bin/sh", "-c", "echo Hello from the Kubernetes cluster"]
+        )
+        # Define template
+        template = client.V1PodTemplateSpec(
+            metadata=client.V1ObjectMeta(labels={"app": "busybox-job"}),
+            spec=client.V1PodSpec(restart_policy="Never", containers=[container])
+        )
+        # Define job spec
+        job_spec = client.V1JobSpec(
+            template=template,
+            backoff_limit=4
+        )
+        # Define the job
+        job = client.V1Job(
+            api_version="batch/v1",
+            kind="Job",
+            metadata=client.V1ObjectMeta(name="busybox-job"),
+                spec=job_spec
+            )
+        # Create the job
+        batch_v1.create_namespaced_job(body=job, namespace="default")
 
     def add_side_effects_files(self, staging_dir: str):
         """Scan for side effect files potentially created after input file execution and update the job's packaged_files with these files"""
